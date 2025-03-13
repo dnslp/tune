@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Voice Tuner App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 40px;
+        }
+        .pitch {
+            font-size: 3em;
+            margin-top: 20px;
+        }
+        .frequency {
+            font-size: 1.5em;
+            color: #555;
+        }
+        button {
+            font-size: 1em;
+            padding: 8px 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        select {
+            font-size: 1em;
+            padding: 5px;
+        }
+        .indicator {
+            font-size: 2em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Voice Tuner</h1>
+
+    <button id="start">Start Tuning</button>
+    <button id="stop" disabled>Stop Tuning</button>
+
+    <div>
+        Target Note:
+        <select id="target">
+            <option value="261.63">C4 (Middle C)</option>
+            <option value="293.66">D4</option>
+            <option value="329.63">E4</option>
+            <option value="349.23">F4</option>
+            <option value="392.00">G4</option>
+            <option value="440.00" selected>A4 (Standard Tuning)</option>
+            <option value="493.88">B4</option>
+            <option value="523.25">C5</option>
+        </select>
+    </div>
+
+    <div class="pitch" id="note">—</div>
+    <div class="frequency" id="hz">0 Hz</div>
+    <div class="indicator" id="indicator">🎯</div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let analyser, microphone, dataArray, rafID;
+
+        const noteElem = document.getElementById('note');
+        const hzElem = document.getElementById('hz');
+        const indicator = document.getElementById('indicator');
+        const startBtn = document.createElement('button');
+        const stopBtn = document.createElement('button');
+
+        startBtn.textContent = '🎤 Start Tuning';
+        stopBtn.textContent = '🛑 Stop Tuning';
+        stopBtn.disabled = true;
+
+        document.body.insertBefore(startBtn, indicator);
+        document.body.insertBefore(stopBtn, indicator);
+
+        let audioCtx, analyser, microphone, dataArray, rafID;
+
+        startBtn.onclick = async () => {
+            audioCtx.resume();
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            analyser = audioCtx.createAnalyser();
+            microphone = audioCtx.createMediaStreamSource(stream);
+            microphone.connect(analyser);
+
+            const bufferLength = analyser.fftSize;
+            dataArray = new Float32Array(bufferLength);
+
+            updatePitch();
+
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        };
+
+        stopBtn.onclick = () => {
+            if (microphone) microphone.disconnect();
+            if (rafID) cancelAnimationFrame(rafID);
+            note.textContent = '—';
+            hz.textContent = '0 Hz';
+            indicator.textContent = '🎯';
+            indicator.style.color = 'black';
+        };
+
+        document.body.insertBefore(startBtn, document.querySelector('div'));
+        document.body.insertBefore(stopBtn, indicator);
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        const dataArray = new Float32Array(2048);
+
+        function updatePitch() {
+            analyser.getFloatTimeDomainData(dataArray);
+            const frequency = autoCorrelate(dataArray, audioCtx.sampleRate);
+
+            if (frequency > -1 && frequency < 2000) {
+                hz.textContent = frequency.toFixed(2) + ' Hz';
+                note.textContent = getNoteFromFrequency(frequency);
+                indicatePitch(frequency);
+            }
+
+            rafID = requestAnimationFrame(updatePitch);
+        }
+
+        function autoCorrelate(buf, sampleRate) {
+            let SIZE = buf.length;
+            let rms = 0;
+            for (let i = 0; i < SIZE; i++) {
+                rms += buffer[i] * buffer[i];
+            }
+            rms = Math.sqrt(rms / SIZE);
+            if (rms < 0.01) return -1;
+
+            let r1 = 0, r2 = SIZE - 1, threshold = 0.2;
+            for (let i = 0; i < SIZE; i++) {
+                if (Math.abs(buffer[i]) < threshold) { r1 = i; break; }
+            }
+            for (let i = 1; i < SIZE; i++) {
+                if (Math.abs(buffer[SIZE - i]) < threshold) { r2 = SIZE - i; break; }
+            }
+            buffer = buffer.slice(r1, r2);
+            SIZE = buffer.length;
+
+            let corr = new Array(SIZE).fill(0);
+            for (let i = 0; i < SIZE; i++) {
+                for (let j = 0; j < SIZE - i; j++) {
+                    corr[i] += buffer[j] * buffer[j + i];
+                }
+            }
+            let d = 0;
+            while (corr[d] > corr[d + 1]) d++;
+            let maxPos = d;
+            for (let i = d; i < SIZE; i++) {
+                if (corr[i] > corr[maxPos]) maxPos = i;
+            }
+            return audioCtx.sampleRate / maxPos;
+        }
+
+        function checkTuning(frequency, target) {
+            let diff = frequency - target;
+            if (Math.abs(diff) < 1) {
+                indicator.textContent = '✅ In Tune';
+                indicator.style.color = 'green';
+            } else if (frequency < target) {
+                indicator.textContent = '⬆️ Sharp';
+                indicator.style.color = 'blue';
+            } else {
+                indicator.textContent = '⬇️ Flat';
+                indicator.style.color = 'red';
+            }
+        }
+    </script>
+</body>
+</html>
